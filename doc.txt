@@ -1,0 +1,120 @@
+By Chris Kukelwicz, started 2008-07-08
+
+---- In Progress
+
+Make Gen.hs generate trivial Get.hs instances for EnumDescriptorProto and DescriptorProtos.
+  (will be simply get f m = f m, or get = ($))
+
+I think Gen.hs has all I need for bootstrapping.
+Now needed is
+  (1) A .proto file parser or lexer/parser that works on descriptor.proto (take old Parsec or new Alex?)
+  (2) A name-resolution pass to turn all message & enum references into fully qualified names.
+  (3) A mangling pass to make all names valid in haskell
+  (4) Ensure the needed fields are set (name/number/label/type, and when relevant, the type_name)
+
+From there the Gen.hs can generate the module text, only an output routine is missing.
+
+At that point the basic system will be bootstrapped.  
+
+DONE
+(*) Create the wire format and generate Wire instances
+
+Then TODO is still quite long
+(*) Test Wire instances
+(*) continuation based Get
+(*) save decomposed reals instead of rationals
+(*) Add more support to .proto loading
+   (**) extension support
+   (**) groups
+   (**) service/rpc
+(*) Add support to Gen.hs code generation
+   (**) Get.hs style API instances
+   (**) extension, group, service support
+   (**) detect and handle mutually recursive module references
+(*) RPC API and instances
+
+
+----
+
+wire format: Using Data.Binary.Get/Put/Builder will make this trivial.
+  Only ugly piece is Double <-> [Word8] which I have prototyped in WireMessage.hs
+
+----
+
+I am uploading this to hackage early, in case someone wished to avoid
+duplicating effort.
+
+I am loeading version 0.0.2 with
+
+cd src
+ghci -XTemplateHaskell -XEmptyDataDecls -XGADTs -XFlexibleInstances -XDeriveDataTypeable ProtocolBuffers/ParseProto.hs
+
+Which ensure that DescriptorProtos/* all compile and tests the stub-like parsec parser (runs agains the "test" file).
+
+http://code.google.com/apis/protocolbuffers/docs/overview.html
+http://code.google.com/p/protobuf/downloads/list
+http://groups.google.com/group/protobuf
+http://code.google.com/apis/protocolbuffers/docs/proto.html
+
+In particular you need 'descriptor.proto' from the source from Google.
+This file describes the programatic representation of a ".proto" file.
+
+to bootstrap:
+
+DONE (1) Decide on how to make the namespaces work
+DONE (2) Manually translate 'descriptor.proto' into basic data types under its "DescriptorProtos" namespace
+     (3) Write Parsec parser that can load 'descriptor.proto' into basic data types from (2)
+     (4) Write automatic translator that can generate haskell source to replace (2) using parsed data from (3)
+     (5) Expand (3) to handle full specification for '.proto' files
+     (5) Add API (see Java/Python/C++ APIs) to manipulate data/messages/enums/groups/extensions
+     (6) Expand (4) to create stub instances for API in (5)
+     (7) Implement stub instances for serializing to and from the wire (use Data.Binary ?)
+     (8) Implement stub instances for 'rpc' calls
+
+The self-hosting nature of "DescriptorProtos" means that opportunities
+for type safety are being lost.  The ranges of the integers and
+contents of the strings are not part of the '.proto' file, so the
+generated data structures do not reflect bounds or encodings.  The
+parser in (3) can be tweaked to use more fine-grained (new)types.
+
+MONOID !
+
+The text at http://code.google.com/apis/protocolbuffers/docs/encoding.html#optional specifies that Messages are Monoids!
+And the rule is simple: Take the last value in the case of conflicts, or concatenate if repeated.
+
+Rather than use
+"type MyMaybe a = (Data.Monoid.Last (Data.Maybe.Maybe a))"
+I have create ProtocolBuffers.Option which uses a phantom type to record whether it is required,
+and it has the last-biased mappend semantics.
+
+Design issues for generated Haskell code:
+
+ * Wire protocol reading
+   http://code.google.com/apis/protocolbuffers/docs/encoding.html
+
+  The wire protocol decodes a fixed length buffer into a Message.
+
+  The wire protocol reader can break the input into a top level series of (field#,wireType#,data#)
+    field# is the 29 bit: 0 to 2^29-1 field #
+    wireType# is 3 bit value (currently Varint, 64-Bit, string, endian 32-Bit)
+    data# is decoded to some (Varint, Word64, ByteString, Word32)
+
+  see src/ProtocolBuffers/WireMessage.hs for an intermediate repesentation in Haskell
+
+ * Generating Haskell data types
+
+  The parsing result may have unknown fields which will need to be stored somewhere.
+  These come of the Wire, and can only be stored as a left over ProtocolBuffers.WireMessage
+
+  Should the generated class use "Maybe" for optional fields?
+  If Yes then
+    => This implies a new type class "Mergable" which is isomorphic to Data.Monoid but with instances needed to merge messages.
+
+  Should the generated class use "Maybe" for required fields?
+  If No then
+    => This implies the API cannot return a partially filled in message
+      => This implies you cannot split the encoded bytes into two pieces then decode them into two messages and finially merge the two message, because one of the halves will be missing a required field!
+  If Yes then
+    => This implies that the type are more complicated and invalid message can be repesented.
+
+"If an invalid enum value is read when parsing a message, it will be treated as an unknown field."
