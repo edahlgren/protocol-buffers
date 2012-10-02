@@ -1,0 +1,112 @@
+message Base32 {
+  optional int32 d = 1;
+}
+
+message Forwards32 {
+  optional int32 d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+message BaseFixed32 {
+  optional fixed32 d = 1;
+}
+
+message ForwardsFixed32 {
+  optional fixed32 d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+message BaseUnsigned32 {
+  optional uint32 d = 1;
+}
+
+message ForwardsUnsigned32 {
+  optional uint32 d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+message BaseSFixed32 {
+  optional sfixed32 d = 1;
+}
+
+message ForwardsSFixed32 {
+  optional sfixed32 d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+message BaseFloat {
+  optional float d = 1;
+}
+
+message ForwardsFloat {
+  optional float d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+message BaseDouble {
+  optional double d = 1;
+}
+
+message ForwardsDouble {
+  optional double d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+message BaseBool {
+  optional bool d = 1;
+}
+
+message ForwardsBool {
+  optional bool d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+message BaseString {
+  optional string d = 1;
+}
+
+message ForwardsString {
+  optional string d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+message BaseBytes {
+  optional bytes d = 1;
+}
+
+message ForwardsBytes {
+  optional bytes d = 1;
+  optional bytes something = 2;
+  repeated bytes something_repeated = 3;
+  required bytes something_else = 4;
+}
+
+enum BaseEnum {
+  IMPORT_FOO = 7;
+  IMPORT_BAR = 8;
+  IMPORT_BAZ = 9;
+}
+
+enum ForwardsEnum {
+  IMPORT_FOO = 7;
+  IMPORT_BAR = 8;
+  IMPORT_BAZ = 9;
+  IMPORT_BOOM = 10;
+}
+

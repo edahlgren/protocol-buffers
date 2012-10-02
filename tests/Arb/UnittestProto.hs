@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, MultiParamTypeClasses, FlexibleInstances #-}
 -- everything passes version 0.2.7
 -- ghci  -fcontext-stack=100 -XRankNTypes -XMultiParamTypeClasses  -XFlexibleInstances -isrc-auto-generated/ Arb/UnittestProto.hs
 
@@ -39,6 +39,30 @@ import UnittestProto.OptionalGroup_extension (OptionalGroup_extension(..))
 import UnittestProto.RepeatedGroup_extension (RepeatedGroup_extension(..))
 import UnittestProto.TestAllExtensions (TestAllExtensions(..))
 
+import Forwards.Base32 (Base32(..))
+import Forwards.Forwards32 (Forwards32(..))
+import Forwards.BaseFixed32 (BaseFixed32(..))
+import Forwards.ForwardsFixed32 (ForwardsFixed32(..))
+import Forwards.BaseUnsigned32 (BaseUnsigned32(..))
+import Forwards.ForwardsUnsigned32 (ForwardsUnsigned32(..))
+import Forwards.BaseSFixed32 (BaseSFixed32(..))
+import Forwards.ForwardsSFixed32 (ForwardsSFixed32(..))
+
+import Forwards.BaseFloat (BaseFloat(..))
+import Forwards.ForwardsFloat (ForwardsFloat(..))
+import Forwards.BaseDouble (BaseDouble(..))
+import Forwards.ForwardsDouble (ForwardsDouble(..))
+
+import Forwards.BaseBool (BaseBool(..))
+import Forwards.ForwardsBool (ForwardsBool(..))
+import Forwards.BaseString (BaseString(..))
+import Forwards.ForwardsString (ForwardsString(..))
+import Forwards.BaseBytes (BaseBytes(..))
+import Forwards.ForwardsBytes (ForwardsBytes(..))
+
+import Forwards.BaseEnum (BaseEnum(..))
+import Forwards.ForwardsEnum (ForwardsEnum(..))
+
 import Debug.Trace(trace)
 
 instance Arbitrary ImportEnum where arbitrary = barb
@@ -54,6 +78,28 @@ instance Arbitrary RepeatedGroup where arbitrary = futz RepeatedGroup
 instance Arbitrary TestRequired where arbitrary = futz TestRequired
 --instance Arbitrary OptionalGroup_extension where arbitrary = futz OptionalGroup_extension
 --instance Arbitrary RepeatedGroup_extension where arbitrary = futz RepeatedGroup_extension
+
+instance Arbitrary Base32 where arbitrary = futz Base32
+instance Arbitrary Forwards32 where arbitrary = futz Forwards32
+instance Arbitrary BaseFixed32 where arbitrary = futz BaseFixed32
+instance Arbitrary ForwardsFixed32 where arbitrary = futz ForwardsFixed32
+instance Arbitrary BaseUnsigned32 where arbitrary = futz BaseUnsigned32
+instance Arbitrary ForwardsUnsigned32 where arbitrary = futz ForwardsUnsigned32
+instance Arbitrary BaseSFixed32 where arbitrary = futz BaseSFixed32
+instance Arbitrary ForwardsSFixed32 where arbitrary = futz ForwardsSFixed32
+
+instance Arbitrary BaseFloat where arbitrary = futz BaseFloat
+instance Arbitrary ForwardsFloat where arbitrary = futz ForwardsFloat
+instance Arbitrary BaseDouble where arbitrary = futz BaseDouble
+instance Arbitrary ForwardsDouble where arbitrary = futz ForwardsDouble
+instance Arbitrary BaseBool where arbitrary = futz BaseBool
+instance Arbitrary ForwardsBool where arbitrary = futz ForwardsBool
+instance Arbitrary BaseString where arbitrary = futz BaseString
+instance Arbitrary ForwardsString where arbitrary = futz ForwardsString
+instance Arbitrary BaseBytes where arbitrary = futz BaseBytes
+instance Arbitrary ForwardsBytes where arbitrary = futz ForwardsBytes
+instance Arbitrary BaseEnum where arbitrary = barb
+instance Arbitrary ForwardsEnum where arbitrary = barb
 
 instance Arbitrary TestAllTypes where
   arbitrary = futz TestAllTypes
@@ -118,8 +164,8 @@ prop_WireArb3 aIn =
   Check that we didn't fuck anything fundamental up
 -}
 
-prop_WireArb4 :: (Show a,Eq a,Arbitrary a,ReflectDescriptor a,Wire a, Mergeable a) => a -> Bool
-prop_WireArb4 a =
+prop_ForwardsParse :: (Show a,Eq a,Arbitrary a,ReflectDescriptor a,Wire a, Mergeable a) => a -> Bool
+prop_ForwardsParse a =
   case messageGetForwards (messagePut a) of
      Right (a',b) | L.null b -> if da==a' then True
                                   else trace ("Unequal WireArb1\n" ++ show a ++ "\n\n" ++show a') False
@@ -129,9 +175,32 @@ prop_WireArb4 a =
 
 {-
   Check that forwards compatibility actually works
-  Add things onto the end of various protobufs
 -}
+data Parser a = Parser a (ByteString -> Either String (a,ByteString))
 
+instance (Show a) => Show (Parser a) where
+  show (Parser x _) = show x
+
+instance (Arbitrary b, Wire b, ReflectDescriptor b) => Arbitrary (Parser b) where
+  arbitrary = do
+    a' <- arbitrary
+    return (Parser a' messageGetForwards)
+
+instance (Arbitrary a, Arbitrary b, Wire b, ReflectDescriptor b) => Arbitrary (Parse a b) where
+  arbitrary = do
+      a' <- arbitrary
+      b' <- arbitrary
+      return (Parse a' b')
+
+data Parse a b = Parse a (Parser b)
+  deriving (Show)
+
+prop_WireForwards :: (ReflectDescriptor a,ReflectDescriptor b,Wire a,Wire b,
+                      Default b, Mergeable b) => Parse a b -> Bool
+prop_WireForwards (Parse a (Parser b messageGetForwards)) =
+  case messageGetForwards $ messagePut a of
+     Right (a',b') -> True --parsed correctly on retry
+     Left msg -> trace ("You totally failed\n") False
 
 -- used in allKeys
 maybeKey :: Arbitrary v => Key Maybe msg v -> msg -> Gen msg
@@ -241,7 +310,7 @@ tests_TestAllTypes =
  , ( "Size2", prop_Size2 )
  , ( "WireArb1", prop_WireArb1 )
  , ( "WireArb2", prop_WireArb2 )
- , ( "WireArb4", prop_WireArb4 )
+ , ( "ForwardsParse", prop_ForwardsParse )
  ]
 
 
@@ -252,9 +321,35 @@ tests_TestAllExtensions =
   , ( "WireArb1", prop_WireArb1 )
   , ( "WireArb2", prop_WireArb2 )
   , ( "WireArb3", prop_WireArb3 )
-  , ( "WireArb4", prop_WireArb4 )
+  , ( "ForwardsParse", prop_ForwardsParse )
   ]
 
+tests_Forwards32 :: [(String, (Parse Forwards32 Base32) -> Bool)]
+tests_Forwards32 = [ ( "Forwards32", prop_WireForwards ) ]
+
+tests_ForwardsFixed32 :: [(String, (Parse ForwardsFixed32 BaseFixed32) -> Bool)]
+tests_ForwardsFixed32 = [ ( "ForwardsFixed32", prop_WireForwards ) ]
+
+tests_ForwardsUnsigned32 :: [(String, (Parse ForwardsUnsigned32 BaseUnsigned32) -> Bool)]
+tests_ForwardsUnsigned32 = [ ( "ForwardsUnsigned32", prop_WireForwards ) ]
+
+tests_ForwardsSFixed32 :: [(String, (Parse ForwardsSFixed32 BaseSFixed32) -> Bool)]
+tests_ForwardsSFixed32 = [ ( "ForwardsSFixed32", prop_WireForwards ) ]
+
+tests_ForwardsFloat :: [(String, (Parse ForwardsFloat BaseFloat) -> Bool)]
+tests_ForwardsFloat = [ ( "ForwardsFloat", prop_WireForwards ) ]
+
+tests_ForwardsDouble :: [(String, (Parse ForwardsDouble BaseDouble) -> Bool)]
+tests_ForwardsDouble = [ ( "ForwardsDouble", prop_WireForwards ) ]
+
+tests_ForwardsBool :: [(String, (Parse ForwardsBool BaseBool) -> Bool)]
+tests_ForwardsBool = [ ( "ForwardsBool", prop_WireForwards ) ]
+
+tests_ForwardsString :: [(String, (Parse ForwardsString BaseString) -> Bool)]
+tests_ForwardsString = [ ( "ForwardsString", prop_WireForwards ) ]
+
+tests_ForwardsBytes :: [(String, (Parse ForwardsBytes BaseBytes) -> Bool)]
+tests_ForwardsBytes = [ ( "ForwardsBytes", prop_WireForwards ) ]
 
 samples :: Gen a -> IO [a]
 samples m =
