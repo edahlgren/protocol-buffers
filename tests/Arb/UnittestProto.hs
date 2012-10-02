@@ -5,8 +5,6 @@
 module Arb.UnittestProto where
 
 import Arb
-import qualified Manytat.ManyTAT as TAT
-import qualified Manytat.ManyTR as TR
 
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Foldable as F
@@ -57,7 +55,7 @@ instance Arbitrary TestRequired where arbitrary = futz TestRequired
 --instance Arbitrary OptionalGroup_extension where arbitrary = futz OptionalGroup_extension
 --instance Arbitrary RepeatedGroup_extension where arbitrary = futz RepeatedGroup_extension
 
-instance Arbitrary TestAllTypes where 
+instance Arbitrary TestAllTypes where
   arbitrary = futz TestAllTypes
 
 instance Arbitrary TestAllExtensions where
@@ -116,6 +114,24 @@ prop_WireArb3 aIn =
                   | otherwise -> trace ("Not all input consumed: "++show (L.length b)) False
      Left msg -> trace msg False
 
+{-
+  Check that we didn't fuck anything fundamental up
+-}
+
+prop_WireArb4 :: (Show a,Eq a,Arbitrary a,ReflectDescriptor a,Wire a, Mergeable a) => a -> Bool
+prop_WireArb4 a =
+  case messageGetForwards (messagePut a) of
+     Right (a',b) | L.null b -> if da==a' then True
+                                  else trace ("Unequal WireArb1\n" ++ show a ++ "\n\n" ++show a') False
+                  | otherwise -> trace ("Not all input consumed: "++show (L.length b)++"\n"++ show a ++ "\n\n" ++show (L.unpack (messagePut a))) False
+     Left msg -> trace (unlines [msg,show a,show . L.unpack $ messagePut a]) False
+  where da = defaultValue `mergeAppend` a
+
+{-
+  Check that forwards compatibility actually works
+  Add things onto the end of various protobufs
+-}
+
 
 -- used in allKeys
 maybeKey :: Arbitrary v => Key Maybe msg v -> msg -> Gen msg
@@ -144,7 +160,7 @@ newRepKey = Key 1000001 9 Nothing
 -- This is all 70 known for TestAllExtensions plus the two above.
 -- The String names are currently discarded.
 allKeys :: [ ( String , TestAllExtensions -> Gen TestAllExtensions ) ]
-allKeys = 
+allKeys =
   [ ( "newOptKey" , maybeKey newOptKey )
   , ( "newRepKey" , seqKey newRepKey )
   , ( "single" , maybeKey single )
@@ -225,6 +241,7 @@ tests_TestAllTypes =
  , ( "Size2", prop_Size2 )
  , ( "WireArb1", prop_WireArb1 )
  , ( "WireArb2", prop_WireArb2 )
+ , ( "WireArb4", prop_WireArb4 )
  ]
 
 
@@ -234,7 +251,8 @@ tests_TestAllExtensions =
   , ( "Size2", prop_Size2 )
   , ( "WireArb1", prop_WireArb1 )
   , ( "WireArb2", prop_WireArb2 )
-  , ( "WireArb3", prop_WireArb3 ) 
+  , ( "WireArb3", prop_WireArb3 )
+  , ( "WireArb4", prop_WireArb4 )
   ]
 
 
@@ -260,28 +278,4 @@ makeFile outfile size = do
   let a1 = arbitrary :: Gen UnittestProto.TestAllTypes.TestAllTypes
   xs <- samples a1
   L.writeFile outfile (go 0 xs)
-
-makeManyTRFile outfile size = do
-  let go s (x:xs) | s > size = []
-                  | otherwise = x : go (s+messageWithLengthSize x) xs
-
-  let a1 = arbitrary :: Gen UnittestProto.TestRequired.TestRequired
-  xs <- samples a1
-  let ys = go 0 xs
-      manyTR :: TR.ManyTR
-      manyTR = defaultValue { TR.tats = Seq.fromList ys }
-  L.writeFile outfile (messagePut manyTR)
-
-
-makeManyTATFile outfile size = do
-  let go s (x:xs) | s > size = []
-                  | otherwise = x : go (s+messageWithLengthSize x) xs
-
-  let a1 = arbitrary :: Gen UnittestProto.TestAllTypes.TestAllTypes
-  xs <- samples a1
-  let ys = go 0 xs
-      manyTAT :: TAT.ManyTAT
-      manyTAT = defaultValue { TAT.tats = Seq.fromList ys }
-  L.writeFile outfile (messagePut manyTAT)
-
 

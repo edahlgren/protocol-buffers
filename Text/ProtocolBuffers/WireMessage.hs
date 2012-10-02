@@ -1,5 +1,5 @@
 {-# Language BangPatterns #-}
-{- | 
+{- |
 Here are the serialization and deserialization functions.
 
 This module cooperates with the generated code to implement the Wire
@@ -15,7 +15,7 @@ messages.
 module Text.ProtocolBuffers.WireMessage
     ( -- * User API functions
       -- ** Main encoding and decoding operations (non-delimited message encoding)
-      messageSize,messagePut,messageGet,messagePutM,messageGetM
+      messageSize,messagePut,messageGet,messageGetForwards,messagePutM,messageGetM
       -- ** These should agree with the length delimited message format of protobuf-2.10, where the message size preceeds the data.
     , messageWithLengthSize,messageWithLengthPut,messageWithLengthGet,messageWithLengthPutM,messageWithLengthGetM
       -- ** Encoding to write or read a single message field (good for delimited messages or incremental use)
@@ -44,7 +44,7 @@ import Data.Array.Unsafe(castSTUArray)
 import Data.Bits (Bits(..))
 --import qualified Data.ByteString as S(last)
 --import qualified Data.ByteString.Unsafe as S(unsafeIndex)
-import qualified Data.ByteString.Lazy as BS (length)
+import qualified Data.ByteString.Lazy as BS (length, take)
 import qualified Data.Foldable as F(foldl',forM_)
 --import Data.List (genericLength)
 import Data.Maybe(fromMaybe)
@@ -135,6 +135,9 @@ messageAsFieldPutM fi msg = let wireTag = toWireTag fi 11
 messageGet :: (ReflectDescriptor msg, Wire msg) => ByteString -> Either String (msg,ByteString)
 messageGet bs = runGetOnLazy messageGetM bs
 
+messageGetForwards :: (ReflectDescriptor msg, Wire msg) => ByteString -> Either String (msg,ByteString)
+messageGetForwards bs = runGetOnLazyForwards messageGetM bs
+
 -- | This 'runGetOnLazy' applied to 'messageWithLengthGetM'.
 --
 -- This first reads the encoded length of the message and will then
@@ -190,6 +193,19 @@ runGetOnLazy parser bs = resolve (runGetAll parser bs)
         resolve (Failed i s) = Left ("Failed at "++show i++" : "++s)
         resolve (Finished bsOut _i r) = Right (r,bsOut)
         resolve (Partial op) = resolve (op Nothing) -- should be impossible
+
+runGetOnLazyForwards :: forall r. Get r -> ByteString -> Either String (r,ByteString)
+runGetOnLazyForwards parser bs = resolve True bs
+  where
+    resolve :: Bool -> ByteString -> Either String (r,ByteString)
+    resolve retry bs' = case runGetAll parser bs' of
+        (Finished bsOut _i r) -> Right (r,bsOut)
+        (Failed i s) -> case i == 0 of
+            True -> failed i s
+            False -> if retry then resolve False $ BS.take (i-1) bs' else failed i s
+        (Partial _) -> error "error decoding: partial parse should never happen"
+
+    failed i s = Left ("Failed at "++show i++" : "++s)
 
 -- | Used in generated code.
 prependMessageSize :: WireSize -> WireSize
@@ -392,7 +408,7 @@ getBareMessageWith updater = go required initialMessage
                               ++ (show . descName . reflectDescriptorInfo $ initialMessage))
 
 unknownField :: Typeable a => a -> FieldId -> Get a
-unknownField msg fieldId = do 
+unknownField msg fieldId = do
   here <- bytesRead
   throwError ("Impossible? Text.ProtocolBuffers.WireMessage.unknownField"
               ++"\n  Updater for "++show (typeOf msg)++" claims there is an unknown field id on wire: "++show fieldId
